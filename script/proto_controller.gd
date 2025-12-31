@@ -57,21 +57,13 @@ var current_interactable : Node = null
 @onready var head: Node3D = $Head
 @onready var collider: CollisionShape3D = $Collider
 @onready var interact_ray: RayCast3D = $Head/InteractRay
+@onready var score_label: Label = $HUD/ScoreLabel
+@onready var interact_prompt: Label = $HUD/InteractPrompt
 
 func _ready() -> void:
 	check_input_mappings()
 	look_rotation.y = rotation.y
 	look_rotation.x = head.rotation.x
-	
-	# Debug: Check if InteractRay is loaded
-	print("[DEBUG] === Player Ready ===")
-	print("[DEBUG] interact_ray: ", interact_ray)
-	if interact_ray:
-		print("[DEBUG] RayCast enabled: ", interact_ray.enabled)
-		print("[DEBUG] RayCast target_position: ", interact_ray.target_position)
-		print("[DEBUG] RayCast collision_mask: ", interact_ray.collision_mask)
-	else:
-		push_error("[ERROR] InteractRay not found! Check proto_controller.tscn")
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Mouse capturing
@@ -214,31 +206,38 @@ func check_interactable():
 	if interact_ray.is_colliding():
 		var collider_obj = interact_ray.get_collider()
 		if collider_obj:
-			print("[DEBUG] RayCast hit: ", collider_obj.name, " - Type: ", collider_obj.get_class())
 			# Get the parent node which should have the Interactable script
 			var interactable = collider_obj.get_parent()
-			print("[DEBUG] Parent: ", interactable.name if interactable else "NULL")
 			if interactable and interactable.has_method("interact"):
-				print("[DEBUG] Found interactable! Press E to pick up")
 				current_interactable = interactable
+				# Show interact prompt
+				if interact_prompt:
+					var prompt_text = "Nhấn E để nhặt"
+					if interactable.has_method("get") and interactable.get("prompt_message"):
+						prompt_text = interactable.prompt_message
+					interact_prompt.text = prompt_text
 				return
-			else:
-				print("[DEBUG] Parent has no interact method")
+	
 	current_interactable = null
+	# Hide interact prompt
+	if interact_prompt:
+		interact_prompt.text = ""
 
 
 ## Try to interact with the current interactable object
 func try_interact():
-	print("[DEBUG] try_interact() called - current_interactable: ", current_interactable)
 	if current_interactable and current_interactable.has_method("interact"):
 		current_interactable.interact(self)
-		print("Đã nhặt vật phẩm! Tổng coin: ", coin)
-	else:
-		print("[DEBUG] Không có vật phẩm để nhặt!")
 
 
 ## Add coin to player inventory
 func add_coin(value: int):
 	coin += value
-	print("Nhận được ", value, " coin!")
+	update_score_ui()
+
+
+## Update the score display on screen
+func update_score_ui():
+	if score_label:
+		score_label.text = "Coin: " + str(coin)
 
