@@ -45,6 +45,8 @@ extends CharacterBody3D
 @export var input_freefly : String = "freefly"
 ## Name of Input Action to interact with objects.
 @export var input_interact : String = "interact"
+## Name of Input Action to pick up milk.
+@export var input_pickup_milk : String = "pickup_milk"
 
 var mouse_captured : bool = false
 var look_rotation : Vector2
@@ -52,10 +54,16 @@ var move_speed : float = 0.0
 var freeflying : bool = false
 var score : int = 0
 var current_interactable : Node = null
+var current_milk : Node = null  ## Milk gần nhất có thể nhặt bằng Q
 
 ## Inventory system
 var inventory : Array = []
 var max_capacity : int = 2
+
+## Energy system
+var energy : float = 100.0
+var max_energy : float = 100.0
+var energy_drain_rate : float = 5.0  ## Năng lượng mất mỗi giây khi di chuyển
 
 ## IMPORTANT REFERENCES
 @onready var head: Node3D = $Head
@@ -64,6 +72,8 @@ var max_capacity : int = 2
 @onready var score_label: Label = $HUD/ScoreLabel
 @onready var interact_prompt: Label = $HUD/InteractPrompt
 @onready var inventory_label: Label = $HUD/InventoryLabel
+@onready var energy_bar: ProgressBar = $HUD/EnergyBar
+@onready var milk_prompt: Label = $HUD/MilkPrompt
 
 func _ready() -> void:
 	check_input_mappings()
@@ -91,6 +101,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Interact with objects (press E)
 	if Input.is_action_just_pressed(input_interact):
 		try_interact()
+	
+	# Pick up milk (press Q)
+	if Input.is_action_just_pressed(input_pickup_milk):
+		try_pickup_milk()
 
 func _physics_process(delta: float) -> void:
 	# If freeflying, handle freefly and nothing else
@@ -124,6 +138,8 @@ func _physics_process(delta: float) -> void:
 		if move_dir:
 			velocity.x = move_dir.x * move_speed
 			velocity.z = move_dir.z * move_speed
+			# Tiêu hao năng lượng khi di chuyển
+			drain_energy(energy_drain_rate * delta)
 		else:
 			velocity.x = move_toward(velocity.x, 0, move_speed)
 			velocity.z = move_toward(velocity.z, 0, move_speed)
@@ -201,6 +217,8 @@ func check_input_mappings():
 ## Check for interactable objects every frame
 func _process(_delta: float) -> void:
 	check_interactable()
+	check_milk()
+	update_energy_ui()
 
 
 ## Check if raycast is hitting an interactable object
@@ -232,8 +250,8 @@ func check_interactable():
 				return
 	
 	current_interactable = null
-	# Hide interact prompt
-	if interact_prompt:
+	# Hide interact prompt (chỉ ẩn nếu không có milk)
+	if interact_prompt and not current_milk:
 		interact_prompt.text = ""
 
 
@@ -282,4 +300,62 @@ func update_score_ui():
 func update_inventory_ui():
 	if inventory_label:
 		inventory_label.text = "Túi: " + str(inventory.size()) + "/" + str(max_capacity)
+
+
+## Tiêu hao năng lượng
+func drain_energy(amount: float):
+	energy = max(0, energy - amount)
+
+
+## Thêm năng lượng (từ milk)
+func add_energy(amount: float):
+	energy = min(max_energy, energy + amount)
+
+
+## Cập nhật UI thanh năng lượng
+func update_energy_ui():
+	if energy_bar:
+		energy_bar.value = energy
+
+
+## Kiểm tra milk gần nhất có thể nhặt
+func check_milk():
+	if not interact_ray:
+		current_milk = null
+		return
+	
+	if interact_ray.is_colliding():
+		var collider_obj = interact_ray.get_collider()
+		if collider_obj:
+			var milk = null
+			# Kiểm tra xem collider có phải là milk không
+			if collider_obj.has_method("pickup_milk"):
+				milk = collider_obj
+			else:
+				# Kiểm tra parent (Area3D -> Milk node)
+				var parent = collider_obj.get_parent()
+				if parent:
+					if parent.has_method("pickup_milk"):
+						milk = parent
+					else:
+						# Kiểm tra thêm 1 level nữa cho trường hợp nested
+						var grandparent = parent.get_parent()
+						if grandparent and grandparent.has_method("pickup_milk"):
+							milk = grandparent
+			
+			if milk:
+				current_milk = milk
+				if milk_prompt:
+					milk_prompt.text = "Ấn Q để nhặt milk"
+				return
+	
+	current_milk = null
+	if milk_prompt:
+		milk_prompt.text = ""
+
+
+## Nhặt milk khi nhấn Q
+func try_pickup_milk():
+	if current_milk and current_milk.has_method("pickup_milk"):
+		current_milk.pickup_milk(self)
 
